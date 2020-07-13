@@ -4,14 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"log"
+	"fmt"
 	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"cloud.google.com/go/errorreporting"
 	firebase "firebase.google.com/go"
 )
 
@@ -25,37 +24,17 @@ type responseMessage struct {
 	Key          string `json:"key,omitempty"`
 }
 
+var serviceName string
+var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+var alphabetLength *big.Int
+
+const keyLength = 8
+
+const expiryDays = 7
+
 func init() {
 	alphabetLength = big.NewInt(int64(len(alphabet)))
-}
-
-var serviceName = "keycreator"
-
-func logAndPrintError(w http.ResponseWriter, msg string, err error) {
-	ctx := context.Background()
-
-	errorClient, err2 := errorreporting.NewClient(ctx, os.Getenv("GCP_PROJECT"), errorreporting.Config{
-		ServiceName: serviceName,
-		OnError: func(err error) {
-			log.Printf("Could not log error: %v", err)
-		},
-	})
-	if err2 != nil {
-		log.Fatal(err2)
-	}
-	defer errorClient.Close()
-
-	errorClient.Report(errorreporting.Entry{
-		Error: err,
-	})
-	res := responseMessage{
-		ResultStatus: "error",
-		ErrorMessage: msg,
-	}
-	w.WriteHeader(http.StatusInternalServerError)
-	if err3 := json.NewEncoder(w).Encode(res); err3 != nil {
-		log.Fatal(err3)
-	}
+	serviceName = os.Getenv("FUNCTION_NAME")
 }
 
 // CreateKey is an HTTP Cloud Function that generates an upload key.
@@ -63,6 +42,11 @@ func CreateKey(w http.ResponseWriter, r *http.Request) {
 	var req requestMessage
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logAndPrintError(w, "failed to decode json", err)
+		return
+	}
+
+	if req.Requester == "" {
+		logAndPrintError(w, "no requester supplied", fmt.Errorf("no requester supplied"))
 		return
 	}
 
@@ -86,11 +70,6 @@ func CreateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-
-var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-var alphabetLength *big.Int
-
-const keyLength = 8
 
 func generateKey() (string, error) {
 	var sb strings.Builder
@@ -128,7 +107,7 @@ func writeKey(key, requester string) error {
 	doc := keyDocument{
 		Key:       key,
 		Requester: requester,
-		Expiry:    time.Now().AddDate(0, 0, 1),
+		Expiry:    time.Now().AddDate(0, 0, expiryDays),
 	}
 	_, _, err2 := client.Collection("keys").Add(ctx, doc)
 	if err2 != nil {
