@@ -10,8 +10,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	firebase "firebase.google.com/go"
 )
 
 type requestMessage struct {
@@ -25,6 +23,7 @@ type responseMessage struct {
 }
 
 var serviceName string
+var projectName string
 var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 var alphabetLength *big.Int
 
@@ -35,29 +34,30 @@ const expiryDays = 7
 func init() {
 	alphabetLength = big.NewInt(int64(len(alphabet)))
 	serviceName = os.Getenv("FUNCTION_NAME")
+	projectName = os.Getenv("GCP_PROJECT")
 }
 
 // CreateKey is an HTTP Cloud Function that generates an upload key.
 func CreateKey(w http.ResponseWriter, r *http.Request) {
 	var req requestMessage
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logAndPrintError(w, "failed to decode json", err)
+		logAndPrintError(w, serviceName, "failed to decode json", err)
 		return
 	}
 
 	if req.Requester == "" {
-		logAndPrintError(w, "no requester supplied", fmt.Errorf("no requester supplied"))
+		logAndPrintError(w, serviceName, "no requester supplied", fmt.Errorf("no requester supplied"))
 		return
 	}
 
 	key, err := generateKey()
 	if err != nil {
-		logAndPrintError(w, "failed to generate key", err)
+		logAndPrintError(w, serviceName, "failed to generate key", err)
 		return
 	}
 
 	if err := writeKey(key, req.Requester); err != nil {
-		logAndPrintError(w, "failed to write key to datastore", err)
+		logAndPrintError(w, serviceName, "failed to write key to datastore", err)
 		return
 	}
 
@@ -66,7 +66,7 @@ func CreateKey(w http.ResponseWriter, r *http.Request) {
 		Key:          key,
 	}
 	if err := json.NewEncoder(w).Encode(res); err != nil {
-		logAndPrintError(w, "failed to encode response", err)
+		logAndPrintError(w, serviceName, "failed to encode response", err)
 		return
 	}
 }
@@ -91,17 +91,10 @@ type keyDocument struct {
 
 func writeKey(key, requester string) error {
 	ctx := context.Background()
-	conf := &firebase.Config{ProjectID: os.Getenv("GCP_PROJECT")}
-	app, err := firebase.NewApp(ctx, conf)
+	client, err := NewFirestoreClient(ctx, projectName)
 	if err != nil {
 		return err
 	}
-
-	client, err := app.Firestore(ctx)
-	if err != nil {
-		return err
-	}
-
 	defer client.Close()
 
 	doc := keyDocument{
