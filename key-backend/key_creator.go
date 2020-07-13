@@ -41,23 +41,23 @@ func init() {
 func CreateKey(w http.ResponseWriter, r *http.Request) {
 	var req requestMessage
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logAndPrintError(w, serviceName, "failed to decode json", err)
+		logAndPrintError(w, "failed to decode json", err)
 		return
 	}
 
 	if req.Requester == "" {
-		logAndPrintError(w, serviceName, "no requester supplied", fmt.Errorf("no requester supplied"))
+		logAndPrintError(w, "no requester supplied", fmt.Errorf("no requester supplied"))
 		return
 	}
 
 	key, err := generateKey()
 	if err != nil {
-		logAndPrintError(w, serviceName, "failed to generate key", err)
+		logAndPrintError(w, "failed to generate key", err)
 		return
 	}
 
 	if err := writeKey(key, req.Requester); err != nil {
-		logAndPrintError(w, serviceName, "failed to write key to datastore", err)
+		logAndPrintError(w, "failed to write key to datastore", err)
 		return
 	}
 
@@ -66,7 +66,7 @@ func CreateKey(w http.ResponseWriter, r *http.Request) {
 		Key:          key,
 	}
 	if err := json.NewEncoder(w).Encode(res); err != nil {
-		logAndPrintError(w, serviceName, "failed to encode response", err)
+		logAndPrintError(w, "failed to encode response", err)
 		return
 	}
 }
