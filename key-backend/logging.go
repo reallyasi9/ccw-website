@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -9,10 +8,7 @@ import (
 	"cloud.google.com/go/errorreporting"
 )
 
-func logAndPrintError(w http.ResponseWriter, msg string, err error) {
-	client := NewErrorReportingClient(context.Background(), projectName, serviceName)
-	defer client.Close()
-
+func logAndWriteError(client *errorreporting.Client, w http.ResponseWriter, msg string, err error) {
 	client.Report(errorreporting.Entry{
 		Error: err,
 	})
@@ -20,17 +16,16 @@ func logAndPrintError(w http.ResponseWriter, msg string, err error) {
 		ResultStatus: "error",
 		ErrorMessage: msg,
 	}
+	log.Print(err)
 	w.WriteHeader(http.StatusInternalServerError)
 	if err2 := json.NewEncoder(w).Encode(res); err2 != nil {
 		log.Fatal(err2)
 	}
 }
 
-func logError(err error) {
-	client := NewErrorReportingClient(context.Background(), projectName, serviceName)
-	defer client.Close()
-
+func logError(client *errorreporting.Client, err error) {
 	client.Report(errorreporting.Entry{
 		Error: err,
 	})
+	log.Print(err)
 }

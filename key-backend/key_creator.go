@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"cloud.google.com/go/firestore"
 )
 
 type requestMessage struct {
@@ -39,25 +41,35 @@ func init() {
 
 // CreateKey is an HTTP Cloud Function that generates an upload key.
 func CreateKey(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	ec := NewErrorReportingClient(ctx, projectName, serviceName)
+	defer ec.Close()
+
+	fs, err := NewFirestoreClient(ctx, projectName)
+	if err != nil {
+		logAndWriteError(ec, w, "failed to create firestore client", err)
+	}
+	defer fs.Close()
+
 	var req requestMessage
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logAndPrintError(w, "failed to decode json", err)
+		logAndWriteError(ec, w, "failed to decode json", err)
 		return
 	}
 
 	if req.Requester == "" {
-		logAndPrintError(w, "no requester supplied", fmt.Errorf("no requester supplied"))
+		logAndWriteError(ec, w, "no requester supplied", fmt.Errorf("no requester supplied"))
 		return
 	}
 
 	key, err := generateKey()
 	if err != nil {
-		logAndPrintError(w, "failed to generate key", err)
+		logAndWriteError(ec, w, "failed to generate key", err)
 		return
 	}
 
-	if err := writeKey(key, req.Requester); err != nil {
-		logAndPrintError(w, "failed to write key to datastore", err)
+	if err := writeKey(ctx, fs, key, req.Requester); err != nil {
+		logAndWriteError(ec, w, "failed to write key to datastore", err)
 		return
 	}
 
@@ -66,7 +78,7 @@ func CreateKey(w http.ResponseWriter, r *http.Request) {
 		Key:          key,
 	}
 	if err := json.NewEncoder(w).Encode(res); err != nil {
-		logAndPrintError(w, "failed to encode response", err)
+		logAndWriteError(ec, w, "failed to encode response", err)
 		return
 	}
 }
@@ -89,14 +101,7 @@ type keyDocument struct {
 	Expiry    time.Time `firestore:"expiry"`
 }
 
-func writeKey(key, requester string) error {
-	ctx := context.Background()
-	client, err := NewFirestoreClient(ctx, projectName)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
+func writeKey(ctx context.Context, client *firestore.Client, key, requester string) error {
 	doc := keyDocument{
 		Key:       key,
 		Requester: requester,
