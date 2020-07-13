@@ -1,4 +1,4 @@
-module christchurchwaltham.org/keycreator
+module christchurchwaltham.org/backend
 
 go 1.14
 
